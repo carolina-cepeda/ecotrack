@@ -1,88 +1,65 @@
-/**
- * EcoTrack - Button Component
- * Reusable button with multiple variants for consistent UI.
- *
- * Variants:
- *  - primary: Main action button (default)
- *  - secondary: Secondary action
- *  - outline: Outline style
- *  - danger: For destructive actions
- *
- * Props:
- *  - variant: button style variant
- *  - onClick: click handler
- *  - children: button content
- *  - disabled: whether button is disabled
- *  - loading: shows loading spinner
- */
- import { ReactElement } from "react";
+import { ButtonHTMLAttributes, ReactNode } from "react";
 
- export enum ButtonVariant {
-   Primary = "primary",
-   Secondary = "secondary",
-   Outline = "outline",
-   Danger = "danger",
- }
+export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: "primary" | "secondary" | "outline" | "danger" | "ghost";
+  size?: "sm" | "md" | "lg";
+  loading?: boolean;
+  iconLeft?: ReactNode;
+  iconRight?: ReactNode;
+  fullWidth?: boolean;
+  children: ReactNode;
+}
 
- export interface ButtonProps {
-   variant?: ButtonVariant;
-   onClick: () => void;
-   children: ReactElement;
-   disabled?: boolean;
-   loading?: boolean;
- }
+const variantClasses = {
+  primary: "bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800 focus:ring-4 focus:ring-emerald-300 focus:outline-none shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed",
+  secondary: "bg-gray-100 text-gray-800 hover:bg-gray-200 active:bg-gray-300 focus:ring-4 focus:ring-gray-200 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-800 dark:text-gray-200",
+  outline: "border-2 border-emerald-600 text-emerald-700 hover:bg-emerald-50 active:bg-emerald-100 focus:ring-4 focus:ring-emerald-200 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed dark:border-emerald-400 dark:text-emerald-400",
+  danger: "bg-red-600 text-white hover:bg-red-700 active:bg-red-800 focus:ring-4 focus:ring-red-300 focus:outline-none shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed",
+  ghost: "text-gray-700 hover:bg-gray-100 active:bg-gray-200 focus:ring-2 focus:ring-gray-200 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300 dark:hover:bg-gray-800",
+};
 
- export const Button: ReactElement<ButtonProps> = ({
-   variant = ButtonVariant.Primary,
-   onClick,
-   children,
-   disabled = false,
-   loading = false,
- }) => {
-   const variantClasses = {
-     primary:
-       "bg-primary-600 text-white hover:bg-primary-700 focus:ring-4 focus:ring-primary-300 focus:outline-none font-medium rounded-lg text-sm px-6 py-3",
-     secondary:
-       "bg-gray-200 text-gray-800 hover:bg-gray-300 focus:ring-4 focus:ring-gray-300 focus:outline-none font-medium rounded-lg text-sm px-6 py-3",
-     outline:
-       "border-2 border-primary-600 text-primary-600 hover:bg-primary-100 focus:ring-4 focus:ring-primary-300 focus:outline-none font-medium rounded-lg text-sm px-6 py-3",
-     danger:
-       "bg-red-600 text-white hover:bg-red-700 focus:ring-4 focus:ring-red-300 focus:outline-none font-medium rounded-lg text-sm px-6 py-3",
-   };
+const sizeClasses = {
+  sm: "h-8 px-3 text-xs rounded-lg",
+  md: "h-10 px-5 text-sm rounded-xl",
+  lg: "h-12 px-6 text-base rounded-xl",
+};
 
-   const baseClasses = "inline-flex items-center justify-center";
+function Spinner() {
+  return (
+    <span className="inline-flex h-4 w-4 animate-spin items-center justify-center" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" className="h-full w-full">
+        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
+        <path d="M12 2a10 10 0 019.95 9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+      </svg>
+    </span>
+  );
+}
 
-   if (loading) {
-     return (
-       <button
-         onClick={onClick}
-         disabled={disabled || loading}
-         className={`${baseClasses} ${variantClasses[variant]} animate-spin`}
-       >
-         <span className="hidden">Procesando...</span>
-         <span aria-hidden="true" className="flex-1">
-           <svg
-             className="h-5 w-5 text-current"
-             viewBox="0 0 24 24"
-             fill="currentColor"
-           >
-             <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
-             <path
-               d="M14 12a2 2 0 100-4 2 2 0 000 4zM5.05 4.95a2 2 0 013.66 0L13 9l-1.6 1.6a2 2 0 11-2.83-2.83L7.34 11H3v2h4.34l-1.1 1.1a2 2 0 11-2.83-2.83L3 13V5.05z"
-             />
-           </svg>
-         </span>
-       </button>
-     );
-   }
-
-   return (
-     <button
-       onClick={onClick}
-       disabled={disabled}
-       className={`${baseClasses} ${variantClasses[variant]} transition-colors`}
-     >
-       {children}
-     </button>
-   );
- };
+export function Button({
+  variant = "primary",
+  size = "md",
+  loading = false,
+  iconLeft,
+  iconRight,
+  fullWidth = false,
+  children,
+  disabled,
+  className = "",
+  ...props
+}: ButtonProps) {
+  const isDisabled = disabled || loading;
+  return (
+    <button
+      type="button"
+      disabled={isDisabled}
+      aria-busy={loading || undefined}
+      className={`inline-flex items-center justify-center gap-2 font-medium transition-all duration-200 ease-out select-none ${variantClasses[variant]} ${sizeClasses[size]} ${fullWidth ? "w-full" : ""} ${className}`}
+      {...props}
+    >
+      {loading && <Spinner />}
+      {!loading && iconLeft && <span className="flex-shrink-0">{iconLeft}</span>}
+      {children}
+      {!loading && iconRight && <span className="flex-shrink-0">{iconRight}</span>}
+    </button>
+  );
+}

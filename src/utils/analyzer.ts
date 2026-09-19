@@ -1,154 +1,138 @@
-/**
- * EcoTrack - Carbon Footprint Analyzer
- * 
- * Module responsible for analyzing user-input text to identify activities
- * and estimate associated carbon emissions.
- * 
- * Follows clean code principles: pure functions, single responsibility,
- * and clear separation of concerns.
- */
+export interface DetectedActivity {
+  activity: string;
+  category: string;
+  quantity: number;
+  unit: string;
+  factor: number;
+  estimatedCo2: number;
+  rawMatch: string;
+}
 
- // --- Emission Factors Database ---
- // Simplified estimates in kg CO2 per unit/activity
- // These values are for demonstration purposes and should be replaced
- // with data from official sources (IPCC, EPA, etc.) for production use.
- 
- interface EmissionFactor {
-   category: "food" | "transport" | "energy" | "goods";
-   activity: string;
-   // kg CO2 per occurrence or per unit (km, portion, etc.)
-   factor: number;
- }
+export interface AnalysisResult {
+  activities: DetectedActivity[];
+  totalCo2: number;
+  tips: string[];
+}
 
- const EMISSION_FACTORS: EmissionFactor[] = [
-   // Food categories
-   { category: "food", activity: "carne", factor: 2.5 },
-   { category: "food", activity: "pollo", factor: 1.9 },
-   { category: "food", activity: "pescado", factor: 0.9 },
-   { category: "food", activity: "vegetariano", factor: 0.5 },
-   { category: "food", activity: "vegano", factor: 0.3 },
+export interface AnalysisInput {
+  text: string;
+}
 
-   // Transport categories (per km)
-   { category: "transport", activity: "bus", factor: 0.15 },
-   { category: "transport", activity: "tren", factor: 0.04 },
-   { category: "transport", activity: "coche", factor: 0.2 },
-   { category: "transport", activity: "moto", factor: 0.12 },
-   { category: "transport", activity: "avion", factor: 0.25 },
+interface EmissionRule {
+  category: string;
+  labels: string[];
+  factor: number;
+  unitLabel: string;
+}
 
-   // Default fallback
-   { category: "general", activity: "otro", factor: 1.0 },
- ];
+const RULES: EmissionRule[] = [
+  {
+    category: "Transporte",
+    labels: ["camioneta", "camionetas", "furgoneta", "furgonetas", "coche", "autos", "auto", "moto", "bus", "tren", "avión", "avion", "vehículo", "vehiculos", "transporte"],
+    factor: 0.2,
+    unitLabel: "vehículo",
+  },
+  {
+    category: "Energía",
+    labels: ["kwh", "kwh de luz", "kwh de electricidad", "kwh electricidad", "kwh luz", "electricidad", "luz", "gas", "energía", "energia"],
+    factor: 0.42,
+    unitLabel: "kWh",
+  },
+  {
+    category: "Residuos",
+    labels: ["bolsa", "bolsas", "basura", "residuo", "residuos", "reciclaje", "desecho", "desechos", "papel", "plástico", "plastico"],
+    factor: 0.05,
+    unitLabel: "bolsa",
+  },
+  {
+    category: "Otros",
+    labels: ["envío", "envios", "refrigeración", "refrigeracion", "papel", "compra", "compras"],
+    factor: 0.15,
+    unitLabel: "operación",
+  },
+];
 
- /**
-  * Normalizes a string: lowercase, removes accents, trims whitespace.
-  * Improves keyword matching reliability.
-  */
- function normalizeText(text: string): string {
-   return text
-     .toLowerCase()
-     .normalize("NFD")
-     .replace(/[\u0300-\u036f]/g, "")
-     .trim();
- }
+function normalizeText(text: string): string {
+  return text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+}
 
- /**
-  * Detects activities from normalized text using keyword matching.
-  * Returns an array of detected activity records with calculated emissions.
-  */
- function detectActivities(text: string): Array<{
-   activity: string;
-   category: string;
-   estimatedCo2: number;
-   rawMatch: string;
- }> {
-   const normalized = normalizeText(text);
-   const results: Array<{
-     activity: string;
-     category: string;
-     estimatedCo2: number;
-     rawMatch: string;
-   }> = [];
+function extractQuantityNear(text: string, keyword: string, maxDistance = 30): number {
+  const idx = text.toLowerCase().search(keyword);
+  if (idx === -1) return 1;
+  const start = Math.max(0, idx - maxDistance);
+  const window = text.slice(start, idx);
+  const matches = window.match(/(\d+(?:[.,]\d+)?)\s*$/);
+  if (!matches) return 1;
+  return Number(matches[1].replace(",", "."));
+}
 
-   // Search for each keyword in the normalized text
-   for (const factor of EMISSION_FACTORS) {
-     const regex = new RegExp(`\\b${factor.activity}\\b`, "i");
-     if (regex.test(normalized)) {
-       // Calculate estimated emissions: factor * presence (1 occurrence = factor)
-       // In a real app, we could parse distances/quantities from the text
-       const match = normalized.match(regex);
-       const rawMatch = match ? match[0] : factor.activity;
+function detectActivities(text: string): DetectedActivity[] {
+  const normalized = normalizeText(text);
+  const results: DetectedActivity[] = [];
 
-       results.push({
-         activity: factor.activity,
-         category: factor.category,
-         estimatedCo2: factor.factor,
-         rawMatch,
-       });
-     }
-   }
+  for (const rule of RULES) {
+    for (const label of rule.labels) {
+      const pattern = label.replace(/[^a-z0-9]+/g, "\\s*");
+      const regex = new RegExp(pattern, "i");
+      if (regex.test(normalized)) {
+        const match = normalized.match(regex);
+        const matchedWord = match ? match[0] : label;
+        const quantity = extractQuantityNear(text, matchedWord);
+        results.push({
+          activity: matchedWord,
+          category: rule.category,
+          quantity,
+          unit: rule.unitLabel,
+          factor: rule.factor,
+          estimatedCo2: Math.round(rule.factor * quantity * 100) / 100,
+          rawMatch: matchedWord,
+        });
+        break;
+      }
+    }
+  }
 
-   // Remove duplicates if multiple factors match the same keyword group
-   const seen = new Set<string>();
-   return results.filter((r) => !seen.has(r.activity) && seen.add(r.activity));
- }
+  const seen = new Set<string>();
+  return results.filter((r) => {
+    const key = `${r.category}-${r.activity}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 
- /**
-  * Calculates total carbon footprint from detected activities.
-  */
- function calculateTotal(activities: Array<{ estimatedCo2: number }>): number {
-   return activities.reduce((sum, act) => sum + act.estimatedCo2, 0);
- }
+function calculateTotal(activities: DetectedActivity[]): number {
+  return activities.reduce((sum, act) => sum + act.estimatedCo2, 0);
+}
 
- /**
-  * Generates user-friendly tips based on detected activity categories.
-  */
- function getTipsByCategory(categories: Set<string>): string[] {
-   const tips: string[] = [];
+function getTipsByCategories(categories: Set<string>): string[] {
+  const tips: string[] = [];
+  if (categories.has("Transporte")) {
+    tips.push("Consolida rutas de reparto y evalúa vehículos eléctricos o compartidos.");
+  }
+  if (categories.has("Energía")) {
+    tips.push("Revisa consumo fuera de horario pico y migra a iluminación LED eficiente.");
+  }
+  if (categories.has("Residuos")) {
+    tips.push("Implementa separación de residuos y reduce materiales de un solo uso.");
+  }
+  if (categories.has("Otros")) {
+    tips.push("Optimiza procesos operativos y prefiere proveedores con certificaciones ambientales.");
+  }
+  if (tips.length === 0) {
+    tips.push("🌱 Cada pequeño cambio cuenta. Comienza por una acción sostenible esta semana.");
+  }
+  return tips.slice(0, 3);
+}
 
-   if (categories.has("food")) {
-     tips.push("💡 Consider reducing meat consumption; choose plant-based meals 2-3 times per week.");
-   }
-   if (categories.has("transport")) {
-     tips.push("🚲 Opt for public transport, cycling, or walking for short distances.");
-   }
-   if (!categories.has("food") && !categories.has("transport")) {
-     tips.push("🌱 Every small change counts! Try incorporating more vegetarian meals.");
-   }
-
-   return tips;
- }
-
- /**
- * Main analysis function.
- * Accepts raw user text, identifies activities, calculates emissions, and returns structured results.
- */
- export interface AnalysisResult {
-   activities: Array<{
-     activity: string;
-     category: string;
-     estimatedCo2: number;
-     rawMatch: string;
-   }>;
-   totalCo2: number;
-   tips: string[];
- }
-
- export interface AnalysisInput {
-   text: string;
- }
-
- export function analyzeText(input: AnalysisInput): AnalysisResult {
-   const detectedActivities = detectActivities(input.text);
-   const total = calculateTotal(detectedActivities.map((a) => a));
-   const categories = new Set(detectedActivities.map((a) => a.category));
-   const tips = getTipsByCategory(categories);
-
-   return {
-     activities: detectedActivities,
-     totalCo2: Math.round(total * 100) / 100, // Round to 2 decimal places
-     tips,
-   };
- }
-
- // --- Export types for external use ---
- export type { EmissionFactor };
+export function analyzeText(input: AnalysisInput): AnalysisResult {
+  const activities = detectActivities(input.text);
+  const total = calculateTotal(activities);
+  const categories = new Set(activities.map((a) => a.category));
+  const tips = getTipsByCategories(categories);
+  return {
+    activities,
+    totalCo2: Math.round(total * 100) / 100,
+    tips,
+  };
+}
